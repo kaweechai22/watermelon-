@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>วัดระดับการสุกของแตงโม</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.png" />
+  <meta name="theme-color" content="#4CAF50" />
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f0f8ff;
+      padding: 2rem;
+    }
+    h1 {
+      color: #2e7d32;
+    }
+    button {
+      padding: 1rem 2rem;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 10px;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+      margin: 0.5rem;
+    }
+    .result {
+      margin-top: 2rem;
+      padding: 2rem;
+      border-radius: 1rem;
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .watermelon {
+      margin: 2rem auto;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle at center, #ff0000 70%, #2e7d32 30%);
+      border: 5px solid #2e7d32;
+    }
+    canvas {
+      display: block;
+      margin: 1rem auto;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+    .history {
+      margin-top: 2rem;
+      text-align: left;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>แตะปุ่มแล้วเคาะแตงโม 🎤🍉</h1>
+  <div id="watermelon" class="watermelon"></div>
+  <button onclick="startDetecting()">เริ่มฟังเสียง</button>
+  <button onclick="reset()">รีเซ็ต</button>
+  <p id="status">สถานะ: รอฟังเสียงเคาะ...</p>
+  <canvas id="spectrum" width="300" height="100"></canvas>
+  <div id="result" class="result"></div>
+  <div>
+    <button onclick="shareResult()">📤 แชร์ผลลัพธ์</button>
+    <button onclick="rateResult(true)">👍 อร่อย</button>
+    <button onclick="rateResult(false)">👎 ไม่อร่อย</button>
+  </div>
+  <div class="history">
+    <h3>ประวัติการตรวจวัด</h3>
+    <ul id="history"></ul>
+  </div>
+  <script>
+    let audioContext, analyser, dataArray, isListening = false;
+
+    async function startDetecting() {
+      document.getElementById("status").innerText = "กำลังฟัง... กรุณาเคาะแตงโมใกล้ไมโครโฟน";
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      const bufferLength = analyser.frequencyBinCount;
+      dataArray = new Uint8Array(bufferLength);
+      source.connect(analyser);
+      isListening = true;
+      listen();
+      drawSpectrum();
+    }
+
+    function listen() {
+      if (!isListening) return;
+      analyser.getByteFrequencyData(dataArray);
+      const sampleRate = audioContext.sampleRate;
+      const binSize = sampleRate / analyser.fftSize;
+      let maxAmp = 0;
+      let peakFreq = 0;
+
+      for (let i = 0; i < dataArray.length; i++) {
+        const freq = i * binSize;
+        const amp = dataArray[i];
+        if (freq >= 100 && freq <= 1200 && amp > maxAmp) {
+          maxAmp = amp;
+          peakFreq = freq;
+        }
+      }
+
+      if (peakFreq) {
+        isListening = false;
+        document.getElementById("status").innerText = `ตรวจพบความถี่: ${peakFreq.toFixed(2)} Hz`;
+        showResult(peakFreq);
+      } else {
+        requestAnimationFrame(listen);
+      }
+    }
+
+    function drawSpectrum() {
+      if (!isListening) return;
+      requestAnimationFrame(drawSpectrum);
+      analyser.getByteFrequencyData(dataArray);
+      const canvas = document.getElementById("spectrum");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      for (let i = 0; i < dataArray.length; i++) {
+        const x = i;
+        const y = canvas.height - dataArray[i] / 2;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function showResult(freq) {
+      let level = "", color = "", sweetness = "", fleshColor = "";
+      let brix = 4.9917e-8 * Math.pow(freq, 3) - 1.6903e-4 * Math.pow(freq, 2) + 0.12663 * freq - 15.5724;
+      brix = Math.max(3, Math.min(brix, 20));
+
+      if (freq > 700) {
+        level = "ดิบ"; color = "#4caf50"; sweetness = "น้อยมาก"; fleshColor = "#c8f6c4";
+      } else if (freq > 600) {
+        level = "ใกล้สุก"; color = "#ffeb3b"; sweetness = "น้อย"; fleshColor = "#ffe082";
+      } else if (freq >= 350) {
+        level = "สุกพอดี"; color = "#f44336"; sweetness = "หวาน"; fleshColor = "#ff5252";
+      } else {
+        level = "อาจเน่า"; color = "#9e9e9e"; sweetness = "เปรี้ยว / เสีย"; fleshColor = "#bdbdbd";
+      }
+
+      const melon = document.getElementById("watermelon");
+      melon.style.background = `radial-gradient(circle at center, ${fleshColor} 70%, #2e7d32 30%)`;
+
+      const result = document.getElementById("result");
+      result.style.backgroundColor = color;
+      result.innerHTML = `
+        ความถี่: ${freq.toFixed(2)} Hz<br>
+        ระดับ: ${level}<br>
+        ความหวาน: ${sweetness}<br>
+        %Brix (โดยประมาณ): ${brix.toFixed(2)} °Bx
+      `;
+
+      const msg = new SpeechSynthesisUtterance(`แตงโมระดับ ${level}, ความหวาน ${sweetness}, ประมาณ ${brix.toFixed(2)} บริกซ์`);
+      speechSynthesis.speak(msg);
+
+      const history = JSON.parse(localStorage.getItem("history") || "[]");
+      history.unshift({ time: new Date().toLocaleString(), freq, level, brix });
+      localStorage.setItem("history", JSON.stringify(history.slice(0, 5)));
+      updateHistory();
+    }
+
+    function updateHistory() {
+      const historyList = document.getElementById("history");
+      const history = JSON.parse(localStorage.getItem("history") || "[]");
+      historyList.innerHTML = history.map(item => `<li>${item.time}: ${item.freq.toFixed(2)} Hz - ${item.level} (${item.brix.toFixed(2)} °Bx)</li>`).join("");
+    }
+
+    function reset() {
+      isListening = false;
+      document.getElementById("status").innerText = "สถานะ: รอฟังเสียงเคาะ...";
+      document.getElementById("result").innerHTML = "";
+      document.getElementById("watermelon").style.background = "radial-gradient(circle at center, #ff0000 70%, #2e7d32 30%)";
+    }
+
+    function shareResult() {
+      const text = document.getElementById("result").innerText;
+      if (navigator.share) {
+        navigator.share({ title: "ผลตรวจแตงโมของฉัน", text });
+      } else {
+        alert("อุปกรณ์ของคุณไม่รองรับการแชร์");
+      }
+    }
+
+    function rateResult(isGood) {
+      alert(isGood ? "ขอบคุณสำหรับการให้คะแนนว่าอร่อย!" : "ขอบคุณสำหรับคำติชมครับ!");
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    updateHistory();
+  </script>
+</body>
+</html>
