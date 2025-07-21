@@ -158,7 +158,7 @@
         ความถี่: ${freq.toFixed(2)} Hz<br>
         ระดับ: ${level}<br>
         ความหวาน: ${sweetness}<br>
-        %Brix (โดยประมาณ): ${brix.toFixed(2)} °Bx
+        %Brix (โดยประมาณ): ${brix.toFixed(1)} °Bx
       `;
 
       const msg = new SpeechSynthesisUtterance(`แตงโมระดับ ${level}, ความหวาน ${sweetness}, ประมาณ ${brix.toFixed(2)} บริกซ์`);
