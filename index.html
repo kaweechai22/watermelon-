@@ -38,7 +38,7 @@
       margin: 2rem auto;
       width: 160px;
       height: 160px;
-      border-radius: 45%;
+      border-radius: 50%;
       background: radial-gradient(circle at center, #ff0000 70%, #2e7d32 30%);
       border: 5px solid #2e7d32;
     }
@@ -61,7 +61,7 @@
   <h1>แตะปุ่มแล้วเคาะแตงโม 🎤🍉</h1>
   <div id="watermelon" class="watermelon"></div>
   <button onclick="startDetecting()">เริ่มฟังเสียง</button>
-  <button onclick="reset()">รีเซ็ต</button>
+  <button onclick="reset()">เริ่มใหม่</button>
   <p id="status">สถานะ: รอฟังเสียงเคาะ...</p>
   <canvas id="spectrum" width="200" height="50"></canvas>
   <div id="result" class="result"></div>
@@ -76,10 +76,15 @@
   </div>
   <script>
     let audioContext, analyser, dataArray, isListening = false;
+    let detectedFrequencies = [];
+    let NUM_TAPS = 3;
+    let tapCount = 0;
 
     async function startDetecting() {
-      document.getElementById("status").innerText = "กำลังฟัง... กรุณาเคาะแตงโมใกล้ไมโครโฟน";
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      document.getElementById("status").innerText = `กำลังฟัง... กรุณาเคาะแตงโม (${tapCount + 1}/${NUM_TAPS})`;
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const source = audioContext.createMediaStreamSource(stream);
       analyser = audioContext.createAnalyser();
@@ -111,8 +116,19 @@
 
       if (peakFreq) {
         isListening = false;
-        document.getElementById("status").innerText = `ตรวจพบความถี่: ${peakFreq.toFixed(2)} Hz`;
-        showResult(peakFreq);
+        detectedFrequencies.push(peakFreq);
+        tapCount++;
+
+        if (tapCount < NUM_TAPS) {
+          document.getElementById("status").innerText = `ตรวจพบความถี่รอบที่ ${tapCount}: ${peakFreq.toFixed(2)} Hz\nกำลังรอฟังรอบถัดไป (${tapCount + 1}/${NUM_TAPS})...`;
+          setTimeout(() => startDetecting(), 1000);
+        } else {
+          const avgFreq = detectedFrequencies.reduce((sum, f) => sum + f, 0) / detectedFrequencies.length;
+          document.getElementById("status").innerText = `ตรวจครบ ${NUM_TAPS} ครั้ง ความถี่เฉลี่ย: ${avgFreq.toFixed(2)} Hz`;
+          showResult(avgFreq);
+          tapCount = 0;
+          detectedFrequencies = [];
+        }
       } else {
         requestAnimationFrame(listen);
       }
@@ -125,13 +141,28 @@
       const canvas = document.getElementById("spectrum");
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const sampleRate = audioContext.sampleRate;
+      const binSize = sampleRate / analyser.fftSize;
+      const startFreq = 100;
+      const endFreq = 1200;
+
+      const startIndex = Math.floor(startFreq / binSize);
+      const endIndex = Math.ceil(endFreq / binSize);
+      const visibleBins = endIndex - startIndex;
+      const binWidth = canvas.width / visibleBins;
+
       ctx.beginPath();
-      for (let i = 0; i < dataArray.length; i++) {
-        const x = i;
+      ctx.moveTo(0, canvas.height);
+      for (let i = startIndex; i < endIndex; i++) {
+        const x = (i - startIndex) * binWidth;
         const y = canvas.height - dataArray[i] / 2;
         ctx.lineTo(x, y);
       }
-      ctx.stroke();
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.closePath();
+      ctx.fillStyle = "#66bb6a";
+      ctx.fill();
     }
 
     function showResult(freq) {
@@ -155,13 +186,13 @@
       const result = document.getElementById("result");
       result.style.backgroundColor = color;
       result.innerHTML = `
-        ความถี่: ${freq.toFixed(2)} Hz<br>
+        ความถี่เฉลี่ย: ${freq.toFixed(2)} Hz<br>
         ระดับ: ${level}<br>
         ความหวาน: ${sweetness}<br>
         %Brix (โดยประมาณ): ${brix.toFixed(1)} °Bx
       `;
 
-      const msg = new SpeechSynthesisUtterance(`แตงโมระดับ ${level}, ความหวาน ${sweetness}, ประมาณ ${brix.toFixed(2)} บริกซ์`);
+      const msg = new SpeechSynthesisUtterance(`แตงโมระดับ ${level}, ความหวาน ${sweetness}, ประมาณ ${brix.toFixed(1)} บริกซ์`);
       speechSynthesis.speak(msg);
 
       const history = JSON.parse(localStorage.getItem("history") || "[]");
@@ -173,11 +204,13 @@
     function updateHistory() {
       const historyList = document.getElementById("history");
       const history = JSON.parse(localStorage.getItem("history") || "[]");
-      historyList.innerHTML = history.map(item => `<li>${item.time}: ${item.freq.toFixed(2)} Hz - ${item.level} (${item.brix.toFixed(2)} °Bx)</li>`).join("");
+      historyList.innerHTML = history.map(item => `<li>${item.time}: ${item.freq.toFixed(2)} Hz - ${item.level} (${item.brix.toFixed(1)} °Bx)</li>`).join("");
     }
 
     function reset() {
       isListening = false;
+      tapCount = 0;
+      detectedFrequencies = [];
       document.getElementById("status").innerText = "สถานะ: รอฟังเสียงเคาะ...";
       document.getElementById("result").innerHTML = "";
       document.getElementById("watermelon").style.background = "radial-gradient(circle at center, #ff0000 70%, #2e7d32 30%)";
